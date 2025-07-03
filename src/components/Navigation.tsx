@@ -36,17 +36,7 @@ const Navigation: React.FC = () => {
 
   return (
     <>
-      {/* Top Banner */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 text-black text-center py-2 font-orbitron font-bold text-sm sm:text-base">
-        <div className="animate-pulse">
-          <span className="animate-bounce inline-block">👑</span>
-          <span className="mx-2 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent animate-glow">
-            NAFIJ 👑
-          </span>
-          <span className="animate-bounce inline-block">👑</span>
-        </div>
-      </div>
-
+    
       {/* Main Navigation */}
       <nav className={`fixed top-10 left-0 right-0 z-40 transition-all duration-300 ${
         scrolled 
