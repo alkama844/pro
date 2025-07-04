@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -22,10 +23,10 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
 }
 
-// Gmail API setup with detailed error handling
-let gmail = null;
+// Gmail OAuth2 setup with nodemailer
 let gmailConfigured = false;
 let gmailError = null;
+let oAuth2Client = null;
 
 async function initializeGmail() {
   // Check for required environment variables
@@ -48,43 +49,106 @@ async function initializeGmail() {
   }
 
   try {
-    const oauth2Client = new google.auth.OAuth2(
+    oAuth2Client = new google.auth.OAuth2(
       process.env.VITE_GMAIL_CLIENT_ID,
       process.env.VITE_GMAIL_CLIENT_SECRET,
       'https://developers.google.com/oauthplayground'
     );
 
-    oauth2Client.setCredentials({
+    oAuth2Client.setCredentials({
       refresh_token: process.env.VITE_GMAIL_REFRESH_TOKEN
     });
 
     // Test the credentials by attempting to get an access token
-    const { credentials } = await oauth2Client.refreshAccessToken();
+    const { credentials } = await oAuth2Client.refreshAccessToken();
     
     if (!credentials.access_token) {
       throw new Error('Failed to obtain access token');
     }
     
-    gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     gmailConfigured = true;
     gmailError = null;
-    console.log('✅ Gmail API initialized successfully');
+    console.log('✅ Gmail OAuth2 initialized successfully');
     return true;
   } catch (error) {
-    console.error('❌ Gmail API initialization failed:', error.message);
+    console.error('❌ Gmail OAuth2 initialization failed:', error.message);
     
     if (error.message.includes('invalid_grant')) {
-      gmailError = 'Gmail Refresh Token is invalid or expired. Please generate a new refresh token at https://developers.google.com/oauthplayground';
+      gmailError = 'Gmail Refresh Token is invalid or expired. Please generate a new refresh token using the OAuth2 playground';
     } else if (error.message.includes('invalid_client')) {
       gmailError = 'Gmail Client ID or Client Secret is invalid. Please check your OAuth2 credentials';
     } else if (error.message.includes('unauthorized')) {
       gmailError = 'Gmail API access is unauthorized. Please check your OAuth2 setup and scopes';
     } else {
-      gmailError = `Gmail API Error: ${error.message}`;
+      gmailError = `Gmail OAuth2 Error: ${error.message}`;
     }
     
     console.log('❌ Gmail Error Details:', gmailError);
     return false;
+  }
+}
+
+// Send email via Gmail using nodemailer
+async function sendViaGmail(name, email, message) {
+  if (!gmailConfigured || !oAuth2Client) {
+    throw new Error('Gmail is not configured');
+  }
+
+  try {
+    const accessToken = await oAuth2Client.getAccessToken();
+    
+    const transporter = nodemailer.createTransporter({
+      service: 'gmail',
+      auth: {
+        type: 'OAuth2',
+        user: 'nafijthepro@gmail.com',
+        clientId: process.env.VITE_GMAIL_CLIENT_ID,
+        clientSecret: process.env.VITE_GMAIL_CLIENT_SECRET,
+        refreshToken: process.env.VITE_GMAIL_REFRESH_TOKEN,
+        accessToken: accessToken.token,
+      },
+    });
+
+    const emailSubject = `New Contact Form Message from NAFIJPRO Website - ${name}`;
+    const emailBody = `Hello NAFIJ,
+
+You have received a new message from your website contact form:
+
+Name: ${name}
+Email: ${email}
+
+Message:
+${message}
+
+---
+This message was sent from the NAFIJPRO website contact form.
+Time: ${new Date().toLocaleString()}
+Best regards,
+NAFIJPRO Website System`;
+
+    // Recipients
+    const recipients = ['nafijprobd@gmail.com', 'nafijrahaman19721@gmail.com'];
+
+    // Send email to each recipient
+    const emailPromises = recipients.map(async (recipient) => {
+      const mailOptions = {
+        from: 'NAFIJPRO Contact Form <nafijthepro@gmail.com>',
+        to: recipient,
+        subject: emailSubject,
+        text: emailBody,
+      };
+
+      return transporter.sendMail(mailOptions);
+    });
+
+    // Wait for all emails to be sent
+    await Promise.all(emailPromises);
+    console.log('✅ Email sent successfully via Gmail (nodemailer)');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Gmail sending error:', error.message);
+    throw error;
   }
 }
 
@@ -160,58 +224,10 @@ app.post('/api/send-email', async (req, res) => {
     let errors = [];
 
     // Try Gmail first if configured
-    if (gmailConfigured && gmail) {
+    if (gmailConfigured && oAuth2Client) {
       try {
-        console.log('📧 Attempting to send via Gmail...');
-        
-        // Create email content
-        const emailSubject = `New Contact Form Message from NAFIJPRO Website`;
-        const emailBody = `Hello NAFIJ,
-
-You have received a new message from your website contact form:
-
-Name: ${name}
-Email: ${email}
-
-Message:
-${message}
-
----
-This message was sent from the NAFIJPRO website contact form.
-Time: ${new Date().toLocaleString()}
-Best regards,
-NAFIJPRO Website System`;
-
-        // Recipients
-        const recipients = ['nafijprobd@gmail.com', 'nafijrahaman19721@gmail.com'];
-
-        // Send email to each recipient
-        const emailPromises = recipients.map(async (recipient) => {
-          const emailContent = [
-            `From: NAFIJPRO Contact Form <nafijthepro@gmail.com>`,
-            `To: ${recipient}`,
-            `Subject: ${emailSubject}`,
-            `Content-Type: text/plain; charset=utf-8`,
-            '',
-            emailBody
-          ].join('\n');
-
-          const encodedEmail = Buffer.from(emailContent)
-            .toString('base64')
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-
-          return gmail.users.messages.send({
-            userId: 'me',
-            requestBody: {
-              raw: encodedEmail
-            }
-          });
-        });
-
-        // Wait for all emails to be sent
-        await Promise.all(emailPromises);
+        console.log('📧 Attempting to send via Gmail (nodemailer)...');
+        await sendViaGmail(name, email, message);
         emailSent = true;
         primaryMethod = 'Gmail';
         console.log('✅ Email sent successfully via Gmail');
@@ -223,7 +239,7 @@ NAFIJPRO Website System`;
         // Update Gmail status if it's an auth error
         if (error.message.includes('invalid_grant') || error.message.includes('unauthorized') || error.message.includes('invalid_client')) {
           gmailConfigured = false;
-          gmail = null;
+          oAuth2Client = null;
           if (error.message.includes('invalid_grant')) {
             gmailError = 'Gmail Refresh Token is invalid or expired';
           } else if (error.message.includes('invalid_client')) {
@@ -309,7 +325,8 @@ app.get('/api/health', (req, res) => {
       gmail: {
         configured: gmailConfigured,
         status: gmailConfigured ? 'Active' : 'Inactive',
-        error: gmailError
+        error: gmailError,
+        method: 'nodemailer + OAuth2'
       },
       web3forms: {
         configured: !!accessKey,
@@ -345,7 +362,7 @@ app.listen(PORT, () => {
   
   // Email service status
   console.log('\n📧 Email Service Status:');
-  console.log(`Gmail: ${gmailConfigured ? '✅ Active' : '❌ Inactive'}`);
+  console.log(`Gmail (nodemailer): ${gmailConfigured ? '✅ Active' : '❌ Inactive'}`);
   if (gmailError) {
     console.log(`Gmail Error: ${gmailError}`);
   }
@@ -362,4 +379,6 @@ app.listen(PORT, () => {
   }
   
   console.log('\n📝 Contact form submissions will be logged to console for manual follow-up');
+  console.log('\n💡 To generate Gmail refresh token, use the OAuth2 playground:');
+  console.log('   https://developers.google.com/oauthplayground');
 });
