@@ -80,6 +80,9 @@ const Contact: React.FC = () => {
     }
   };
 
+  // Check if we're in deployed environment
+  const isDeployed = window.location.hostname !== 'localhost' && !window.location.hostname.includes('webcontainer');
+
   return (
     <section id="contact" className="py-12 sm:py-16 lg:py-20 relative overflow-hidden">
       {/* Background */}
@@ -155,11 +158,13 @@ const Contact: React.FC = () => {
                 <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="text-sm font-space font-semibold text-blue-800 dark:text-blue-300 mb-1">
-                    Multiple Delivery Methods
+                    {isDeployed ? 'Web3Forms Delivery' : 'Multiple Delivery Methods'}
                   </h4>
                   <p className="text-xs text-blue-700 dark:text-blue-400 font-space">
-                    Your message will be sent via Gmail and backed up through Web3Forms to ensure delivery. 
-                    If both fail, it will be logged for manual follow-up.
+                    {isDeployed 
+                      ? 'Your message will be sent directly via Web3Forms to ensure reliable delivery.'
+                      : 'Your message will be sent via Gmail and backed up through Web3Forms to ensure delivery. If both fail, it will be logged for manual follow-up.'
+                    }
                   </p>
                 </div>
               </div>
