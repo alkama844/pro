@@ -20,13 +20,28 @@ app.use(express.json());
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Gmail API setup with better error handling
+// Gmail API setup with detailed error handling
 let gmail = null;
 let gmailConfigured = false;
+let gmailError = null;
 
 async function initializeGmail() {
-  if (!process.env.VITE_GMAIL_CLIENT_ID || !process.env.VITE_GMAIL_CLIENT_SECRET || !process.env.VITE_GMAIL_REFRESH_TOKEN) {
-    console.log('Gmail credentials not found in environment variables');
+  // Check for required environment variables
+  if (!process.env.VITE_GMAIL_CLIENT_ID) {
+    gmailError = 'Gmail Client ID is missing from environment variables';
+    console.log('❌ Gmail Error:', gmailError);
+    return false;
+  }
+
+  if (!process.env.VITE_GMAIL_CLIENT_SECRET) {
+    gmailError = 'Gmail Client Secret is missing from environment variables';
+    console.log('❌ Gmail Error:', gmailError);
+    return false;
+  }
+
+  if (!process.env.VITE_GMAIL_REFRESH_TOKEN) {
+    gmailError = 'Gmail Refresh Token is missing from environment variables';
+    console.log('❌ Gmail Error:', gmailError);
     return false;
   }
 
@@ -42,18 +57,70 @@ async function initializeGmail() {
     });
 
     // Test the credentials by attempting to get an access token
-    await oauth2Client.getAccessToken();
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    if (!credentials.access_token) {
+      throw new Error('Failed to obtain access token');
+    }
     
     gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     gmailConfigured = true;
-    console.log('Gmail API initialized successfully');
+    gmailError = null;
+    console.log('✅ Gmail API initialized successfully');
     return true;
   } catch (error) {
-    console.warn('Gmail API initialization failed:', error.message);
+    console.error('❌ Gmail API initialization failed:', error.message);
+    
     if (error.message.includes('invalid_grant')) {
-      console.warn('The refresh token is invalid or expired. Please generate a new one at https://developers.google.com/oauthplayground');
+      gmailError = 'Gmail Refresh Token is invalid or expired. Please generate a new refresh token at https://developers.google.com/oauthplayground';
+    } else if (error.message.includes('invalid_client')) {
+      gmailError = 'Gmail Client ID or Client Secret is invalid. Please check your OAuth2 credentials';
+    } else if (error.message.includes('unauthorized')) {
+      gmailError = 'Gmail API access is unauthorized. Please check your OAuth2 setup and scopes';
+    } else {
+      gmailError = `Gmail API Error: ${error.message}`;
     }
+    
+    console.log('❌ Gmail Error Details:', gmailError);
     return false;
+  }
+}
+
+// Web3Forms backup function
+async function sendViaWeb3Forms(name, email, message) {
+  if (!process.env.WEB3FORMS_ACCESS_KEY) {
+    throw new Error('Web3Forms access key is missing from environment variables');
+  }
+
+  try {
+    const response = await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        access_key: process.env.WEB3FORMS_ACCESS_KEY,
+        name: name,
+        email: email,
+        message: message,
+        subject: `New Contact Form Message from NAFIJPRO Website - ${name}`,
+        from_name: 'NAFIJPRO Website',
+        to: 'nafijthepro@gmail.com',
+        cc: 'nafijprobd@gmail.com,nafijrahaman19721@gmail.com'
+      })
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Web3Forms submission failed');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Web3Forms Error:', error.message);
+    throw error;
   }
 }
 
@@ -61,7 +128,7 @@ async function initializeGmail() {
 initializeGmail();
 
 // API Routes
-// Send email endpoint with improved error handling
+// Send email endpoint with detailed error handling and Web3Forms backup
 app.post('/api/send-email', async (req, res) => {
   try {
     const { name, email, message } = req.body;
@@ -83,31 +150,19 @@ app.post('/api/send-email', async (req, res) => {
       });
     }
 
-    // Check if Gmail is configured and working
-    if (!gmailConfigured || !gmail) {
-      console.log('Gmail not configured, logging contact form submission:', { name, email, timestamp: new Date().toISOString() });
-      
-      // Log the message details for manual follow-up
-      console.log('Contact Form Submission:');
-      console.log('Name:', name);
-      console.log('Email:', email);
-      console.log('Message:', message);
-      console.log('---');
-      
-      return res.json({
-        success: true,
-        message: 'Thank you for your message! I have received it and will get back to you soon. 👑'
-      });
-    }
-
-    // Try to send email with retry mechanism
     let emailSent = false;
-    let lastError = null;
+    let primaryMethod = '';
+    let backupMethod = '';
+    let errors = [];
 
-    try {
-      // Create email content
-      const emailSubject = `New Contact Form Message from NAFIJPRO Website`;
-      const emailBody = `Hello NAFIJ,
+    // Try Gmail first if configured
+    if (gmailConfigured && gmail) {
+      try {
+        console.log('📧 Attempting to send via Gmail...');
+        
+        // Create email content
+        const emailSubject = `New Contact Form Message from NAFIJPRO Website`;
+        const emailBody = `Hello NAFIJ,
 
 You have received a new message from your website contact form:
 
@@ -123,80 +178,112 @@ Time: ${new Date().toLocaleString()}
 Best regards,
 NAFIJPRO Website System`;
 
-      // Recipients
-      const recipients = ['nafijprobd@gmail.com', 'nafijrahaman19721@gmail.com'];
+        // Recipients
+        const recipients = ['nafijprobd@gmail.com', 'nafijrahaman19721@gmail.com'];
 
-      // Send email to each recipient
-      const emailPromises = recipients.map(async (recipient) => {
-        const emailContent = [
-          `From: NAFIJPRO Contact Form <nafijthepro@gmail.com>`,
-          `To: ${recipient}`,
-          `Subject: ${emailSubject}`,
-          `Content-Type: text/plain; charset=utf-8`,
-          '',
-          emailBody
-        ].join('\n');
+        // Send email to each recipient
+        const emailPromises = recipients.map(async (recipient) => {
+          const emailContent = [
+            `From: NAFIJPRO Contact Form <nafijthepro@gmail.com>`,
+            `To: ${recipient}`,
+            `Subject: ${emailSubject}`,
+            `Content-Type: text/plain; charset=utf-8`,
+            '',
+            emailBody
+          ].join('\n');
 
-        const encodedEmail = Buffer.from(emailContent)
-          .toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/, '');
+          const encodedEmail = Buffer.from(emailContent)
+            .toString('base64')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
 
-        return gmail.users.messages.send({
-          userId: 'me',
-          requestBody: {
-            raw: encodedEmail
-          }
+          return gmail.users.messages.send({
+            userId: 'me',
+            requestBody: {
+              raw: encodedEmail
+            }
+          });
         });
-      });
 
-      // Wait for all emails to be sent
-      await Promise.all(emailPromises);
-      emailSent = true;
+        // Wait for all emails to be sent
+        await Promise.all(emailPromises);
+        emailSent = true;
+        primaryMethod = 'Gmail';
+        console.log('✅ Email sent successfully via Gmail');
 
-    } catch (error) {
-      lastError = error;
-      console.error('Gmail sending error:', error.message);
-      
-      // If it's an auth error, mark Gmail as not configured
-      if (error.message.includes('invalid_grant') || error.message.includes('unauthorized')) {
-        gmailConfigured = false;
-        gmail = null;
-        console.warn('Gmail credentials invalid, switching to fallback mode');
+      } catch (error) {
+        console.error('❌ Gmail sending error:', error.message);
+        errors.push(`Gmail: ${error.message}`);
+        
+        // Update Gmail status if it's an auth error
+        if (error.message.includes('invalid_grant') || error.message.includes('unauthorized') || error.message.includes('invalid_client')) {
+          gmailConfigured = false;
+          gmail = null;
+          if (error.message.includes('invalid_grant')) {
+            gmailError = 'Gmail Refresh Token is invalid or expired';
+          } else if (error.message.includes('invalid_client')) {
+            gmailError = 'Gmail Client ID or Client Secret is invalid';
+          } else {
+            gmailError = 'Gmail API access is unauthorized';
+          }
+          console.warn('⚠️ Gmail credentials invalid, switching to backup method');
+        }
+      }
+    } else {
+      errors.push(`Gmail: ${gmailError || 'Not configured'}`);
+      console.log('⚠️ Gmail not available, trying backup method...');
+    }
+
+    // Try Web3Forms as backup if Gmail failed
+    if (!emailSent) {
+      try {
+        console.log('📧 Attempting to send via Web3Forms...');
+        await sendViaWeb3Forms(name, email, message);
+        emailSent = true;
+        backupMethod = 'Web3Forms';
+        console.log('✅ Email sent successfully via Web3Forms');
+      } catch (error) {
+        console.error('❌ Web3Forms error:', error.message);
+        errors.push(`Web3Forms: ${error.message}`);
       }
     }
 
     if (emailSent) {
+      const method = primaryMethod || backupMethod;
       res.json({
         success: true,
-        message: 'Message sent successfully! I\'ll get back to you soon. 👑'
+        message: `Message sent successfully via ${method}! I'll get back to you soon. 👑`
       });
     } else {
-      // Fallback: log the message and return success to user
-      console.log('Email sending failed, logging contact form submission:', { name, email, timestamp: new Date().toISOString() });
-      console.log('Contact Form Submission (Fallback):');
+      // Log the message for manual follow-up
+      console.log('📝 Logging contact form submission for manual follow-up:');
       console.log('Name:', name);
       console.log('Email:', email);
       console.log('Message:', message);
-      console.log('Error:', lastError?.message || 'Unknown error');
+      console.log('Timestamp:', new Date().toISOString());
+      console.log('Errors:', errors);
       console.log('---');
       
-      res.json({
-        success: true,
-        message: 'Thank you for your message! I have received it and will get back to you soon. 👑'
+      // Return detailed error information
+      const errorDetails = errors.length > 0 ? ` Errors: ${errors.join(', ')}` : '';
+      
+      res.status(500).json({
+        success: false,
+        message: `Failed to send message through all available methods.${errorDetails} Your message has been logged and I'll respond manually.`
       });
     }
 
   } catch (error) {
-    console.error('Contact form error:', error);
+    console.error('❌ Contact form error:', error);
     
     // Always log the contact attempt even if there's an error
-    console.log('Contact Form Submission (Error Fallback):');
+    console.log('📝 Contact Form Submission (Error Fallback):');
     console.log('Name:', req.body.name || 'Unknown');
     console.log('Email:', req.body.email || 'Unknown');
     console.log('Message:', req.body.message || 'Unknown');
     console.log('Error:', error.message);
+    console.log('Timestamp:', new Date().toISOString());
     console.log('---');
     
     res.status(500).json({
@@ -206,13 +293,26 @@ NAFIJPRO Website System`;
   }
 });
 
-// Health check endpoint
+// Health check endpoint with detailed status
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  const status = {
+    status: 'OK',
     message: 'NAFIJPRO Backend is running! 👑',
-    gmail: gmailConfigured ? 'Configured' : 'Not configured (using fallback mode)'
-  });
+    timestamp: new Date().toISOString(),
+    services: {
+      gmail: {
+        configured: gmailConfigured,
+        status: gmailConfigured ? 'Active' : 'Inactive',
+        error: gmailError
+      },
+      web3forms: {
+        configured: !!process.env.WEB3FORMS_ACCESS_KEY,
+        status: process.env.WEB3FORMS_ACCESS_KEY ? 'Active' : 'Not configured'
+      }
+    }
+  };
+
+  res.json(status);
 });
 
 // Catch all handler: send back React's index.html file for any non-API routes
@@ -233,10 +333,22 @@ app.listen(PORT, () => {
   console.log(`🚀 NAFIJPRO Server running on port ${PORT}`);
   console.log(`📱 Frontend: http://localhost:${PORT}`);
   console.log(`🔧 API Health: http://localhost:${PORT}/api/health`);
-  console.log(`📧 Gmail configured: ${gmailConfigured ? 'Yes' : 'No (Fallback mode active)'}`);
   
-  if (!gmailConfigured) {
-    console.log('📝 Contact form submissions will be logged to console');
-    console.log('🔑 To enable email sending, update your Gmail refresh token in .env file');
+  // Email service status
+  console.log('\n📧 Email Service Status:');
+  console.log(`Gmail: ${gmailConfigured ? '✅ Active' : '❌ Inactive'}`);
+  if (gmailError) {
+    console.log(`Gmail Error: ${gmailError}`);
   }
+  console.log(`Web3Forms: ${process.env.WEB3FORMS_ACCESS_KEY ? '✅ Active' : '❌ Not configured'}`);
+  
+  if (!gmailConfigured && !process.env.WEB3FORMS_ACCESS_KEY) {
+    console.log('\n⚠️  WARNING: No email services are configured!');
+    console.log('Contact form submissions will only be logged to console.');
+    console.log('\nTo fix this:');
+    console.log('1. For Gmail: Update your OAuth2 credentials in .env file');
+    console.log('2. For Web3Forms: Add WEB3FORMS_ACCESS_KEY to .env file');
+  }
+  
+  console.log('\n📝 Contact form submissions will be logged to console for manual follow-up');
 });

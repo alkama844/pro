@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mail, Phone, MapPin, Crown, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, Mail, Phone, MapPin, Crown, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { sendContactMessage } from '../utils/contactApi';
 
 const Contact: React.FC = () => {
@@ -10,7 +10,7 @@ const Contact: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{
-    type: 'success' | 'error' | null;
+    type: 'success' | 'error' | 'info' | null;
     message: string;
   }>({ type: null, message: '' });
 
@@ -43,7 +43,7 @@ const Contact: React.FC = () => {
       setIsLoading(false);
       setTimeout(() => {
         setNotification({ type: null, message: '' });
-      }, 5000);
+      }, 8000);
     }
   };
 
@@ -52,6 +52,32 @@ const Contact: React.FC = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const getNotificationIcon = () => {
+    switch (notification.type) {
+      case 'success':
+        return <CheckCircle className="w-5 h-5 flex-shrink-0" />;
+      case 'error':
+        return <AlertCircle className="w-5 h-5 flex-shrink-0" />;
+      case 'info':
+        return <Info className="w-5 h-5 flex-shrink-0" />;
+      default:
+        return null;
+    }
+  };
+
+  const getNotificationStyles = () => {
+    switch (notification.type) {
+      case 'success':
+        return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-800';
+      case 'error':
+        return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 border border-red-200 dark:border-red-800';
+      case 'info':
+        return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 border border-blue-200 dark:border-blue-800';
+      default:
+        return '';
+    }
   };
 
   return (
@@ -122,6 +148,22 @@ const Contact: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Email Service Info */}
+            <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <div className="flex items-start space-x-3">
+                <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h4 className="text-sm font-space font-semibold text-blue-800 dark:text-blue-300 mb-1">
+                    Multiple Delivery Methods
+                  </h4>
+                  <p className="text-xs text-blue-700 dark:text-blue-400 font-space">
+                    Your message will be sent via Gmail and backed up through Web3Forms to ensure delivery. 
+                    If both fail, it will be logged for manual follow-up.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Contact Form */}
@@ -129,17 +171,11 @@ const Contact: React.FC = () => {
             <div className="bg-white/80 dark:bg-gray-900/50 backdrop-blur-sm border border-gray-200 dark:border-gray-800 rounded-2xl p-6 sm:p-8 hover:border-yellow-500/50 dark:hover:border-yellow-500/50 transition-all duration-300 shadow-lg">
               {/* Notification */}
               {notification.type && (
-                <div className={`mb-6 p-4 rounded-lg flex items-center space-x-3 ${
-                  notification.type === 'success' 
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 border border-green-200 dark:border-green-800' 
-                    : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 border border-red-200 dark:border-red-800'
-                }`}>
-                  {notification.type === 'success' ? (
-                    <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  )}
-                  <span className="text-sm font-space">{notification.message}</span>
+                <div className={`mb-6 p-4 rounded-lg flex items-start space-x-3 ${getNotificationStyles()}`}>
+                  {getNotificationIcon()}
+                  <div className="flex-1">
+                    <span className="text-sm font-space leading-relaxed">{notification.message}</span>
+                  </div>
                 </div>
               )}
 
