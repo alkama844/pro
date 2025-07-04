@@ -17,8 +17,10 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the React app build
-app.use(express.static(path.join(__dirname, '../dist')));
+// Only serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
+}
 
 // Gmail API setup with detailed error handling
 let gmail = null;
@@ -88,7 +90,9 @@ async function initializeGmail() {
 
 // Web3Forms backup function
 async function sendViaWeb3Forms(name, email, message) {
-  if (!process.env.WEB3FORMS_ACCESS_KEY) {
+  const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
+  
+  if (!accessKey) {
     throw new Error('Web3Forms access key is missing from environment variables');
   }
 
@@ -100,7 +104,7 @@ async function sendViaWeb3Forms(name, email, message) {
         'Accept': 'application/json'
       },
       body: JSON.stringify({
-        access_key: process.env.WEB3FORMS_ACCESS_KEY,
+        access_key: accessKey,
         name: name,
         email: email,
         message: message,
@@ -295,6 +299,8 @@ NAFIJPRO Website System`;
 
 // Health check endpoint with detailed status
 app.get('/api/health', (req, res) => {
+  const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
+  
   const status = {
     status: 'OK',
     message: 'NAFIJPRO Backend is running! 👑',
@@ -306,8 +312,8 @@ app.get('/api/health', (req, res) => {
         error: gmailError
       },
       web3forms: {
-        configured: !!process.env.WEB3FORMS_ACCESS_KEY,
-        status: process.env.WEB3FORMS_ACCESS_KEY ? 'Active' : 'Not configured'
+        configured: !!accessKey,
+        status: accessKey ? 'Active' : 'Not configured'
       }
     }
   };
@@ -315,10 +321,13 @@ app.get('/api/health', (req, res) => {
   res.json(status);
 });
 
-// Catch all handler: send back React's index.html file for any non-API routes
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
-});
+// Only serve React app in production
+if (process.env.NODE_ENV === 'production') {
+  // Catch all handler: send back React's index.html file for any non-API routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((error, req, res, next) => {
@@ -340,9 +349,11 @@ app.listen(PORT, () => {
   if (gmailError) {
     console.log(`Gmail Error: ${gmailError}`);
   }
-  console.log(`Web3Forms: ${process.env.WEB3FORMS_ACCESS_KEY ? '✅ Active' : '❌ Not configured'}`);
   
-  if (!gmailConfigured && !process.env.WEB3FORMS_ACCESS_KEY) {
+  const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
+  console.log(`Web3Forms: ${accessKey ? '✅ Active' : '❌ Not configured'}`);
+  
+  if (!gmailConfigured && !accessKey) {
     console.log('\n⚠️  WARNING: No email services are configured!');
     console.log('Contact form submissions will only be logged to console.');
     console.log('\nTo fix this:');
