@@ -20,18 +20,25 @@ app.use(express.json());
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Gmail API setup
-const oauth2Client = new google.auth.OAuth2(
-  process.env.VITE_GMAIL_CLIENT_ID,
-  process.env.VITE_GMAIL_CLIENT_SECRET,
-  'https://developers.google.com/oauthplayground'
-);
+// Gmail API setup - only if credentials are available
+let gmail = null;
+if (process.env.VITE_GMAIL_CLIENT_ID && process.env.VITE_GMAIL_CLIENT_SECRET && process.env.VITE_GMAIL_REFRESH_TOKEN) {
+  try {
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.VITE_GMAIL_CLIENT_ID,
+      process.env.VITE_GMAIL_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground'
+    );
 
-oauth2Client.setCredentials({
-  refresh_token: process.env.VITE_GMAIL_REFRESH_TOKEN
-});
+    oauth2Client.setCredentials({
+      refresh_token: process.env.VITE_GMAIL_REFRESH_TOKEN
+    });
 
-const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  } catch (error) {
+    console.warn('Gmail API setup failed:', error.message);
+  }
+}
 
 // API Routes
 // Send email endpoint
@@ -39,10 +46,20 @@ app.post('/api/send-email', async (req, res) => {
   try {
     const { name, email, message } = req.body;
 
+    // Validate input
     if (!name || !email || !message) {
       return res.status(400).json({
         success: false,
         message: 'All fields are required'
+      });
+    }
+
+    // Check if Gmail is configured
+    if (!gmail) {
+      console.log('Gmail not configured, simulating email send for:', { name, email });
+      return res.json({
+        success: true,
+        message: 'Message received! I\'ll get back to you soon. 👑 (Demo mode - Gmail not configured)'
       });
     }
 
@@ -101,6 +118,8 @@ NAFIJPRO Website System`;
 
   } catch (error) {
     console.error('Gmail API Error:', error);
+    
+    // Return proper JSON error response
     res.status(500).json({
       success: false,
       message: 'Failed to send message. Please try again later.'
@@ -118,8 +137,18 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Server Error:', error);
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error'
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 NAFIJPRO Server running on port ${PORT}`);
   console.log(`📱 Frontend: http://localhost:${PORT}`);
   console.log(`🔧 API Health: http://localhost:${PORT}/api/health`);
+  console.log(`📧 Gmail configured: ${gmail ? 'Yes' : 'No (Demo mode)'}`);
 });
