@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: nafijpro-website
+    env: node
+    plan: free
+    buildCommand: npm run render:build
+    startCommand: npm run render:start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB3FORMS_ACCESS_KEY
+        value: badf4ca6-e440-43be-abbf-e0e6c4b7663b
+    healthCheckPath: /api/health

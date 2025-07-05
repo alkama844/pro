@@ -11,49 +11,60 @@ interface ContactResponse {
 
 export const sendContactMessage = async (emailData: EmailData): Promise<ContactResponse> => {
   try {
-    // Check if we're in a WebContainer environment (like StackBlitz)
+    // Detect environment
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const isWebContainer = window.location.hostname.includes('webcontainer') || 
                           window.location.hostname.includes('stackblitz') ||
                           window.location.hostname.includes('bolt.new');
+    const isRender = window.location.hostname.includes('render.com') || 
+                    window.location.hostname.includes('onrender.com');
     
-    // For WebContainer or deployed environments, use Web3Forms directly
-    if (isWebContainer || (window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1'))) {
-      console.log('Using Web3Forms directly...');
-      
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          access_key: 'badf4ca6-e440-43be-abbf-e0e6c4b7663b',
-          name: emailData.name,
-          email: emailData.email,
-          message: emailData.message,
-          subject: `New Contact Form Message from NAFIJPRO Website - ${emailData.name}`,
-          from_name: 'NAFIJPRO Website',
-          to: 'nafijthepro@gmail.com',
-          cc: 'nafijprobd@gmail.com,nafijrahaman19721@gmail.com'
-        })
-      });
+    console.log('Environment detection:', { isLocalhost, isWebContainer, isRender });
 
-      const result = await response.json();
-      
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to send message');
-      }
-
-      return {
-        success: true,
-        message: 'Message sent successfully via Web3Forms! I\'ll get back to you soon. 👑'
-      };
-    } else {
-      // For local development, try backend API first, then fallback to Web3Forms
-      console.log('Trying backend API...');
+    // For Render deployment or production, use the same domain for API calls
+    if (isRender || (!isLocalhost && !isWebContainer)) {
+      console.log('Using same-domain API for production/Render...');
       
       try {
-        const apiUrl = window.location.origin.replace(':5173', ':3001') + '/api/send-email';
+        const apiUrl = `${window.location.origin}/api/send-email`;
+        console.log('API URL:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(emailData),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API failed: ${response.status} - ${errorText}`);
+        }
+
+        const result = await response.json();
+        return result;
+        
+      } catch (apiError) {
+        console.log('API failed, falling back to Web3Forms...', apiError);
+        
+        // Fallback to Web3Forms
+        return await sendDirectWeb3Forms(emailData);
+      }
+    }
+    
+    // For WebContainer environments, use Web3Forms directly
+    else if (isWebContainer) {
+      console.log('Using Web3Forms directly for WebContainer...');
+      return await sendDirectWeb3Forms(emailData);
+    }
+    
+    // For local development, try backend API first
+    else if (isLocalhost) {
+      console.log('Trying local backend API...');
+      
+      try {
+        const apiUrl = `http://localhost:3001/api/send-email`;
         
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -72,37 +83,14 @@ export const sendContactMessage = async (emailData: EmailData): Promise<ContactR
         
       } catch (backendError) {
         console.log('Backend API failed, falling back to Web3Forms...', backendError);
-        
-        // Fallback to Web3Forms
-        const response = await fetch('https://api.web3forms.com/submit', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            access_key: 'badf4ca6-e440-43be-abbf-e0e6c4b7663b',
-            name: emailData.name,
-            email: emailData.email,
-            message: emailData.message,
-            subject: `New Contact Form Message from NAFIJPRO Website - ${emailData.name}`,
-            from_name: 'NAFIJPRO Website',
-            to: 'nafijthepro@gmail.com',
-            cc: 'nafijprobd@gmail.com,nafijrahaman19721@gmail.com'
-          })
-        });
-
-        const result = await response.json();
-        
-        if (!response.ok || !result.success) {
-          throw new Error(result.message || 'Failed to send message');
-        }
-
-        return {
-          success: true,
-          message: 'Message sent successfully via Web3Forms! I\'ll get back to you soon. 👑'
-        };
+        return await sendDirectWeb3Forms(emailData);
       }
+    }
+    
+    // Default fallback
+    else {
+      console.log('Using Web3Forms as default...');
+      return await sendDirectWeb3Forms(emailData);
     }
 
   } catch (error) {
@@ -122,3 +110,35 @@ export const sendContactMessage = async (emailData: EmailData): Promise<ContactR
     };
   }
 };
+
+// Direct Web3Forms function
+async function sendDirectWeb3Forms(emailData: EmailData): Promise<ContactResponse> {
+  const response = await fetch('https://api.web3forms.com/submit', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      access_key: 'badf4ca6-e440-43be-abbf-e0e6c4b7663b',
+      name: emailData.name,
+      email: emailData.email,
+      message: emailData.message,
+      subject: `New Contact Form Message from NAFIJPRO Website - ${emailData.name}`,
+      from_name: 'NAFIJPRO Website',
+      to: 'nafijthepro@gmail.com',
+      cc: 'nafijprobd@gmail.com,nafijrahaman19721@gmail.com'
+    })
+  });
+
+  const result = await response.json();
+  
+  if (!response.ok || !result.success) {
+    throw new Error(result.message || 'Failed to send message');
+  }
+
+  return {
+    success: true,
+    message: 'Message sent successfully! I\'ll get back to you soon. 👑'
+  };
+}

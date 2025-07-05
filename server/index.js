@@ -12,16 +12,57 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// Enhanced CORS configuration for Render deployment
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://localhost:5173',
+    // Add your Render frontend URL here when you get it
+    /\.render\.com$/,
+    /\.onrender\.com$/
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+};
 
-// Only serve static files in production
+// Middleware
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Health check endpoint (should be before static files)
+app.get('/api/health', (req, res) => {
+  const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
+  
+  const status = {
+    status: 'OK',
+    message: 'NAFIJPRO Backend is running! 👑',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    port: PORT,
+    services: {
+      web3forms: {
+        configured: !!accessKey,
+        status: accessKey ? 'Active' : 'Not configured'
+      }
+    }
+  };
+
+  res.json(status);
+});
+
+// Serve static files in production
 if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the dist directory
   app.use(express.static(path.join(__dirname, '../dist')));
+  
+  // Log static file serving
+  console.log('📁 Serving static files from:', path.join(__dirname, '../dist'));
 }
 
-// Web3Forms backup function
+// Web3Forms function
 async function sendViaWeb3Forms(name, email, message) {
   const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
   
@@ -62,7 +103,6 @@ async function sendViaWeb3Forms(name, email, message) {
 }
 
 // API Routes
-// Send email endpoint with Web3Forms
 app.post('/api/send-email', async (req, res) => {
   try {
     const { name, email, message } = req.body;
@@ -131,28 +171,8 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
-  
-  const status = {
-    status: 'OK',
-    message: 'NAFIJPRO Backend is running! 👑',
-    timestamp: new Date().toISOString(),
-    services: {
-      web3forms: {
-        configured: !!accessKey,
-        status: accessKey ? 'Active' : 'Not configured'
-      }
-    }
-  };
-
-  res.json(status);
-});
-
-// Only serve React app in production
+// Catch all handler for React app (must be last)
 if (process.env.NODE_ENV === 'production') {
-  // Catch all handler: send back React's index.html file for any non-API routes
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
@@ -167,9 +187,11 @@ app.use((error, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 NAFIJPRO Server running on port ${PORT}`);
-  console.log(`📱 Frontend: http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📱 Server URL: http://localhost:${PORT}`);
   console.log(`🔧 API Health: http://localhost:${PORT}/api/health`);
   
   // Email service status
@@ -177,5 +199,10 @@ app.listen(PORT, () => {
   const accessKey = process.env.WEB3FORMS_ACCESS_KEY || 'badf4ca6-e440-43be-abbf-e0e6c4b7663b';
   console.log(`Web3Forms: ${accessKey ? '✅ Active' : '❌ Not configured'}`);
   
+  if (process.env.NODE_ENV === 'production') {
+    console.log('\n📁 Serving React app from /dist directory');
+  }
+  
   console.log('\n📝 Contact form submissions will be logged to console for manual follow-up');
+  console.log('\n🎯 Ready for Render deployment!');
 });
