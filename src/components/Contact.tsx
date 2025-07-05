@@ -35,9 +35,10 @@ const Contact: React.FC = () => {
         });
       }
     } catch (error) {
+      console.error('Form submission error:', error);
       setNotification({
         type: 'error',
-        message: 'An error occurred. Please try again later.'
+        message: 'An unexpected error occurred. Please try again later.'
       });
     } finally {
       setIsLoading(false);
@@ -80,8 +81,11 @@ const Contact: React.FC = () => {
     }
   };
 
-  // Check if we're in deployed environment
-  const isDeployed = window.location.hostname !== 'localhost' && !window.location.hostname.includes('webcontainer');
+  // Check if we're in WebContainer or deployed environment
+  const isWebContainer = window.location.hostname.includes('webcontainer') || 
+                        window.location.hostname.includes('stackblitz') ||
+                        window.location.hostname.includes('bolt.new');
+  const isDeployed = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
 
   return (
     <section id="contact" className="py-12 sm:py-16 lg:py-20 relative overflow-hidden">
@@ -158,12 +162,12 @@ const Contact: React.FC = () => {
                 <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="text-sm font-space font-semibold text-blue-800 dark:text-blue-300 mb-1">
-                    {isDeployed ? 'Web3Forms Delivery' : 'Multiple Delivery Methods'}
+                    Web3Forms Direct Delivery
                   </h4>
                   <p className="text-xs text-blue-700 dark:text-blue-400 font-space">
-                    {isDeployed 
+                    {isWebContainer || isDeployed 
                       ? 'Your message will be sent directly via Web3Forms to ensure reliable delivery.'
-                      : 'Your message will be sent via Gmail and backed up through Web3Forms to ensure delivery. If both fail, it will be logged for manual follow-up.'
+                      : 'Your message will be sent via the backend API with Web3Forms as backup to ensure delivery.'
                     }
                   </p>
                 </div>
