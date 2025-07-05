@@ -3,7 +3,7 @@ services:
     name: nafijpro-website
     env: node
     plan: free
-    buildCommand: npm run render:build
+    buildCommand: npm ci && npx vite build
     startCommand: npm run render:start
     envVars:
       - key: NODE_ENV
