@@ -85,7 +85,7 @@ const Contact: React.FC = () => {
   const isWebContainer = window.location.hostname.includes('webcontainer') || 
                         window.location.hostname.includes('stackblitz') ||
                         window.location.hostname.includes('bolt.new');
-  const isDeployed = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   return (
     <section id="contact" className="py-12 sm:py-16 lg:py-20 relative overflow-hidden">
@@ -162,12 +162,14 @@ const Contact: React.FC = () => {
                 <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="text-sm font-space font-semibold text-blue-800 dark:text-blue-300 mb-1">
-                    Web3Forms Direct Delivery
+                    {isWebContainer ? 'Web3Forms Direct Delivery' : 'Dual Delivery System'}
                   </h4>
                   <p className="text-xs text-blue-700 dark:text-blue-400 font-space">
-                    {isWebContainer || isDeployed 
+                    {isWebContainer 
                       ? 'Your message will be sent directly via Web3Forms to ensure reliable delivery.'
-                      : 'Your message will be sent via the backend API with Web3Forms as backup to ensure delivery.'
+                      : isLocalhost
+                      ? 'Your message will be sent via Gmail (if configured) with Web3Forms as backup to ensure delivery.'
+                      : 'Your message will be sent via our backend API with multiple delivery methods for maximum reliability.'
                     }
                   </p>
                 </div>
